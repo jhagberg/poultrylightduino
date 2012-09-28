@@ -21,8 +21,11 @@
 #include <rest_server.h>
 #include <SPI.h>
 #include <WiFly.h>
-
 #include "Credentials.h"
+
+#include <FlexiTimer2.h>
+#include <Time.h>
+#include <TimeAlarms.h>
 
 #define SERVICES_COUNT	10
 #define CRLF "\r\n"
@@ -53,8 +56,18 @@ void register_rest_server() {
       request_server.register_resources(resource_description, SERVICES_COUNT);  
 }
 
+
+//put Innterupt code here
+void MyIntterupt() {
+  
+  
+}
+
 void setup() {
-	// start the Ethernet connection and the server:
+	
+        FlexiTimer2::set(1000, MyIntterupt); //Interrupt every second.
+        FlexiTimer2::start();
+        // start the Ethernet connection and the server:
         WiFly.begin();
 
        if (!WiFly.join(ssid, passphrase)) {
