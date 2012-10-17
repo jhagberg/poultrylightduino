@@ -70,16 +70,14 @@ void setup() {
         // start the Ethernet connection and the server:
         WiFly.begin();
 
-       if (!WiFly.join(ssid, passphrase)) {
-          while (1) {
-          // Hang on failure.
-          }
-        }
         
-       //   Serial.begin(9600);
+            Serial.begin(9600);
        //   Serial.print("IP: ");
        //   Serial.println(WiFly.ip());
     
+        //sync time with NTP fron wifly
+        //setSyncProvider(WiFly.getTime());
+        Serial.println(WiFly.getTime());
         request_server.set_post_with_get(true);
 	server.begin();
 
