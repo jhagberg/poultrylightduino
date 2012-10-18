@@ -1,10 +1,7 @@
 /**********************************************************************
-  RestServer Ethernet Example
+  A poultry light dimmer based on WiFly and Julio Terras Arduino Rest Server
  
- This sketch is an example of how to use the RestSever working with the 
- Ethernet library. The RestLibrary is a simple library that enables the
- Arduino to read and respond to incoming requests that are structured as 
- restfull requests. 
+
 
  For more information check out the GitHub repository at: 
 	https://github.com/julioterra/Arduino_Rest_Server/wiki
@@ -12,8 +9,6 @@
  Sketch and library created by Julio Terra - November 20, 2011
 	http://www.julioterra.com/journal
 
- Ethernet code was based on example created on 18 Dec 2009 by David A. Mellis and
- modified on 4 Sep 2010 by Tom Igoe
 
  **********************************************************************/
 
@@ -21,7 +16,11 @@
 #include <rest_server.h>
 #include <SPI.h>
 #include <WiFly.h>
-#include "Credentials.h"
+//#include "Credentials.h"
+
+#include <HIH4030.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
 
 #include <FlexiTimer2.h>
 #include <Time.h>
@@ -31,15 +30,26 @@
 #define CRLF "\r\n"
 
 WiFlyServer server(80);
+time_t prevDisplay = 0;
 
+//my t5 dimmer pin and relay
+
+int T5dim = 9;
+int T5relay = 8;
+//Light on or off? 
+boolean T5lightOn = false;
+//Should we dim true ?
+boolean T5lightDim = false;
+
+volatile int brightness = 0;
+
+unsigned long lastMillis = 0;
 
 // Create instance of the RestServer
 RestServer request_server = RestServer(Serial);
 
 
 // input and output pin assignments
-int service_get_pins [] = {A0, A1, A2, A3, A4, A5};
-int service_set_pins [] = {3,5,8,9};	
 
 
 
@@ -67,6 +77,11 @@ void setup() {
 	
         FlexiTimer2::set(1000, MyIntterupt); //Interrupt every second.
         FlexiTimer2::start();
+        //declare ping as outputs.      
+        pinMode(T5dim, OUTPUT);
+        pinMode(T5relay, OUTPUT);
+        
+        
         // start the Ethernet connection and the server:
         WiFly.begin();
 
@@ -76,21 +91,34 @@ void setup() {
        //   Serial.println(WiFly.ip());
     
         //sync time with NTP fron wifly
-        //setSyncProvider(WiFly.getTime());
-        Serial.println(WiFly.getTime());
+       setSyncProvider(getNtpTime);
+       while(timeStatus()== timeNotSet){} 
+      
+        Serial.println("the time");
+        
+        Serial.print(hour());
+        printDigits(minute());
+        printDigits(second());
+        Serial.print(" ");
+        Serial.print(year()); 
+        Serial.print(" ");
+        Serial.print(month());
+        Serial.print(" ");
+        Serial.print(day());      
+        Serial.println(); 
+        
+        
         request_server.set_post_with_get(true);
 	server.begin();
 
-	// initialize input and output pins
-	for(int i = 0; i < 6; i++) { pinMode(service_get_pins[i], INPUT); }
-	for(int i = 0; i < 4; i++) { pinMode(service_set_pins[i], OUTPUT); }
+	
 
 	// register resources with resource_server
 	register_rest_server();
 }
 
 void loop() {
-        delay(200);
+        
         WiFlyClient client = server.available();
   
 
@@ -100,8 +128,7 @@ void loop() {
 
 			// get request from client, if available
 			if (request_server.handle_requests(client)) {
-				read_data();
-				write_data();
+				
 				request_server.respond();	// tell RestServer: ready to respond
 			}		
 
@@ -115,22 +142,52 @@ void loop() {
 }
 
 
-void read_data() {
-	int pin_array_number = 0;
-	for (int j = 0; j < SERVICES_COUNT; j++) {
-		if (!request_server.resource_post_enabled(j)) {
-			request_server.resource_set_state(j, analogRead(service_get_pins[pin_array_number]));
-			pin_array_number++;
-		}
-	}			
+
+
+//Not sure why we need this but it looks like it works
+unsigned long getNtpTime()
+{
+ return WiFly.getTime(); 
 }
 
-void write_data() {
-	int pin_array_number = 0;
-	for (int j = 0; j < SERVICES_COUNT; j++) {
-		if (request_server.resource_post_enabled(j)) {
-		analogWrite(service_set_pins[pin_array_number], request_server.resource_get_state(j));
-			pin_array_number++;
-		}
-	}			
+
+void printDigits(int digits){
+  // utility function for digital clock display: prints preceding colon and leading 0
+  Serial.print(":");
+  if(digits < 10)
+    Serial.print('0');
+  Serial.print(digits);
 }
+
+
+void dimT5()
+{
+  //update dim bright every 14 second this will take aprox 60 min
+
+  if ( (millis() - lastMillis > 14000) && T5lightDim){
+           lastMillis = millis();
+           if (T5lightOn){ //Light is on and we are still dimming up
+             if( brightness < 255 ){
+                  brightness++;
+                  analogWrite(T5dim, brightness);
+                  if(brightness == 255){
+                    //we are done dimming
+                    T5lightDim = false;
+                  }
+                  }
+           }
+           if (!T5lightOn){
+               if( brightness > 0 ){
+               brightness--;
+               analogWrite(T5dim, brightness);
+               if(brightness == 0){
+                     //We are  on zero dim level turn off
+                     digitalWrite(T5relay, LOW);
+               }
+           }
+        }  
+    }  
+  
+}
+
+
