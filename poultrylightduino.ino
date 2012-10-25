@@ -104,7 +104,7 @@ void setup() {
        //while(timeStatus()== timeNotSet){} 
        Alarm.alarmRepeat(6,00,0, sunrise);
        Alarm.alarmRepeat(10,00,0, sunset);
-       Alarm.alarmRepeat(6,43,0, sunrise);
+       Alarm.alarmRepeat(2,00,0, syncNTP);
 
         Serial.println("Start");
         Serial.println(); 
@@ -251,4 +251,7 @@ void Repeats(){
   Serial.println("second timer");         
 }
 
+void syncNTP(){
+  setTime((time_t)getNtpTime());
+}
 
