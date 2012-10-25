@@ -26,20 +26,22 @@
 #include <Time.h>
 #include <TimeAlarms.h>
 
-#define SERVICES_COUNT	10
+#define SERVICES_COUNT	7
 #define CRLF "\r\n"
 
 WiFlyServer server(80);
 time_t prevDisplay = 0;
+time_t timeNow= 0;
 
 //my t5 dimmer pin and relay
 
 int T5dim = 9;
 int T5relay = 8;
 //Light on or off? 
-boolean T5lightOn = false;
+volatile boolean T5lightOn = false;
 //Should we dim true ?
-boolean T5lightDim = false;
+volatile boolean T5lightDim = false;
+String currenttime = "";
 
 volatile int brightness = 0;
 
@@ -57,54 +59,54 @@ RestServer request_server = RestServer(Serial);
 // it is important to define this array in its own method so that it will
 // be discarted from the Arduino's RAM after the registration.
 void register_rest_server() {
-      resource_description_t resource_description [SERVICES_COUNT] = {{"output_1", 	false, 	{0, 1024}}, 
-							  {"output_2", 	false, 	{0, 1024}}, {"output_3", 	false, 	{0, 1024}}, 
-							  {"output_4", 	false, 	{0, 1024}}, {"output_5", 	false, 	{0, 1024}}, 
-							  {"output_6", 	false, 	{0, 1024}}, {"input_1", 	true, 	{0, 255}}, 
-							  {"input_2", 	true, 	{0, 255}}, {"relay", 	true, 	{0, 255}}, 
-							  {"input_4", 	true, 	{0, 255}} };
+      resource_description_t resource_description [SERVICES_COUNT] = {{"dim", 	true, 	{0, 255}}, 
+							  {"temp", 	false, 	{-100, 100}}, 
+							  {"hum", 	false, 	{0, 100}}, 
+                                                          {"sunrise", 	true, 	{0, 1024}}, 
+							  {"sunset", 	true, 	{0, 1024}},
+                                                          {"time", 	true, 	{0, 1024}},
+                                                          {"light", 	true, 	{0, 1}} 
+                                                            };
       request_server.register_resources(resource_description, SERVICES_COUNT);  
 }
 
 
 //put Innterupt code here
 void MyIntterupt() {
-  
+  //update and check dim every second. 
+  dimT5();
+  Alarm.delay(0);
   
 }
 
 void setup() {
 	
-        FlexiTimer2::set(1000, MyIntterupt); //Interrupt every second.
-        FlexiTimer2::start();
+        
         //declare ping as outputs.      
         pinMode(T5dim, OUTPUT);
         pinMode(T5relay, OUTPUT);
-        
-        
+        Serial.begin(9600);
+
+        request_server.resource_set_state("light", 0);
         // start the Ethernet connection and the server:
         WiFly.begin();
-
+        //lets wifly settle and set time. 
+        delay(1000);
         
-            Serial.begin(9600);
+            
        //   Serial.print("IP: ");
        //   Serial.println(WiFly.ip());
-    
-        //sync time with NTP fron wifly
-       setSyncProvider(getNtpTime);
-       while(timeStatus()== timeNotSet){} 
-      
-        Serial.println("the time");
         
-        Serial.print(hour());
-        printDigits(minute());
-        printDigits(second());
-        Serial.print(" ");
-        Serial.print(year()); 
-        Serial.print(" ");
-        Serial.print(month());
-        Serial.print(" ");
-        Serial.print(day());      
+        //sync time with NTP fron wifly
+       //setSyncInterval(60);
+       //setSyncProvider(getNtpTime);
+       setTime((time_t)getNtpTime());
+       //while(timeStatus()== timeNotSet){} 
+       Alarm.alarmRepeat(6,00,0, sunrise);
+       Alarm.alarmRepeat(10,00,0, sunset);
+       Alarm.alarmRepeat(6,43,0, sunrise);
+
+        Serial.println("Start");
         Serial.println(); 
         
         
@@ -115,13 +117,16 @@ void setup() {
 
 	// register resources with resource_server
 	register_rest_server();
+        FlexiTimer2::set(1000, MyIntterupt); //Interrupt every second.
+        FlexiTimer2::start();
 }
 
 void loop() {
         
+//      delay(200);  
         WiFlyClient client = server.available();
-  
-
+        timeNow = now();
+        delay(200);
 	// CONNECTED TO CLIENT
 	if (client) {
 		while (client.connected()) {
@@ -130,13 +135,35 @@ void loop() {
 			if (request_server.handle_requests(client)) {
 				
 				request_server.respond();	// tell RestServer: ready to respond
-			}		
-
+                                
+                                if(request_server.resource_updated("light")){
+                                  T5lightOn = request_server.resource_get_state("light");
+                                   if(T5lightOn) {
+                                   T5lightDim = true;
+                                   digitalWrite(T5relay, HIGH);
+                                   }
+                                   if(!T5lightOn) {
+                                   T5lightDim = true;
+                                   }
+                                  }
+                                  
+                                  
+                                  
+			}
+                                                       
 			// send data to client, when ready	
-			if (request_server.handle_response(client)) break;
+			if (request_server.handle_response(client))
+                              {
+                                 currenttime = currenttime + hour() + ":" + printzeros(minute()) + ":" + printzeros(second()) +" " + year() + "-" + month() + "-" + day();
+                                  client.print(currenttime);
+                                  currenttime = "";
+                                  request_server.print_flash_string(PSTR("\r\n\r\n\r\n"), client);
+                                  break;                                      
+                              }
+                         
 		}
 		// give the web browser time to receive the data and close connection
-		delay(200);
+//delay(200);
 		client.stop();
 	}
 }
@@ -147,7 +174,7 @@ void loop() {
 //Not sure why we need this but it looks like it works
 unsigned long getNtpTime()
 {
- return WiFly.getTime(); 
+ return WiFly.getTime() + 7200; 
 }
 
 
@@ -159,16 +186,30 @@ void printDigits(int digits){
   Serial.print(digits);
 }
 
+String printzeros(int digits){
+  if(digits < 10)
+   {return (String)"0" + digits;}
+  else 
+  {  return (String)digits;}
+}
+  
+  
+
+
 
 void dimT5()
 {
   //update dim bright every 14 second this will take aprox 60 min
-
+//Serial.println("in t5dim");
+//Serial.println(T5lightDim);
   if ( (millis() - lastMillis > 14000) && T5lightDim){
+           
            lastMillis = millis();
+  //         Serial.println("in every 14s");
            if (T5lightOn){ //Light is on and we are still dimming up
              if( brightness < 255 ){
                   brightness++;
+                  request_server.resource_set_state("dim", brightness);
                   analogWrite(T5dim, brightness);
                   if(brightness == 255){
                     //we are done dimming
@@ -183,11 +224,31 @@ void dimT5()
                if(brightness == 0){
                      //We are  on zero dim level turn off
                      digitalWrite(T5relay, LOW);
+                     T5lightDim = false;
                }
            }
         }  
     }  
   
+}
+
+void sunrise(){
+  T5lightOn = true;
+  T5lightDim = true;
+  digitalWrite(T5relay, HIGH);
+  
+  Serial.println("Alarm: - turn lights on");    
+}
+void sunset(){
+  T5lightOn = false;
+  T5lightDim = true;
+  
+  
+  Serial.println("Alarm: - turn lights off");    
+}
+
+void Repeats(){
+  Serial.println("second timer");         
 }
 
 
