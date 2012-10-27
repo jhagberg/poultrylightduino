@@ -98,13 +98,15 @@ void setup() {
        //   Serial.println(WiFly.ip());
         
         //sync time with NTP fron wifly
-       //setSyncInterval(60);
-       //setSyncProvider(getNtpTime);
-       setTime((time_t)getNtpTime());
+       setSyncInterval(60);
+       setSyncProvider(getNtpTime);
+       //setTime((time_t)getNtpTime());
        //while(timeStatus()== timeNotSet){} 
        Alarm.alarmRepeat(6,00,0, sunrise);
        Alarm.alarmRepeat(10,00,0, sunset);
-       Alarm.alarmRepeat(2,00,0, syncNTP);
+       //Alarm.alarmRepeat(21,40,0, syncNTP);
+       Alarm.timerRepeat(60, Repeats);
+
 
         Serial.println("Start");
         Serial.println(); 
@@ -117,8 +119,8 @@ void setup() {
 
 	// register resources with resource_server
 	register_rest_server();
-        FlexiTimer2::set(1000, MyIntterupt); //Interrupt every second.
-        FlexiTimer2::start();
+        //FlexiTimer2::set(1000, MyIntterupt); //Interrupt every second.
+        //FlexiTimer2::start();
 }
 
 void loop() {
@@ -126,11 +128,13 @@ void loop() {
 //      delay(200);  
         WiFlyClient client = server.available();
         timeNow = now();
-        delay(200);
+        Alarm.delay(1000);
+        dimT5();
 	// CONNECTED TO CLIENT
 	if (client) {
+              Serial.println("In client.connect");
 		while (client.connected()) {
-
+                        
 			// get request from client, if available
 			if (request_server.handle_requests(client)) {
 				
@@ -165,6 +169,7 @@ void loop() {
 		// give the web browser time to receive the data and close connection
 //delay(200);
 		client.stop();
+                Serial.println("after client stop");
 	}
 }
 
@@ -174,7 +179,9 @@ void loop() {
 //Not sure why we need this but it looks like it works
 unsigned long getNtpTime()
 {
+  Serial.println("In syncNTP");
  return WiFly.getTime() + 7200; 
+ 
 }
 
 
@@ -252,6 +259,8 @@ void Repeats(){
 }
 
 void syncNTP(){
+  Serial.println("In syncNTP");  
   setTime((time_t)getNtpTime());
+  Serial.println("after set snyncNTP");  
 }
 
