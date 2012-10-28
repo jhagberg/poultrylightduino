@@ -25,15 +25,24 @@
 #include <FlexiTimer2.h>
 #include <Time.h>
 #include <TimeAlarms.h>
+#include <Timezone.h>
+
+//Central European Time (Frankfurt, Borlänge)
+TimeChangeRule CEST = {"CEST", Last, Sun, Mar, 2, 120};     //Central European Summer Time
+TimeChangeRule CET = {"CET ", Last, Sun, Oct, 3, 60};       //Central European Standard Time
+Timezone CE(CEST, CET);
 
 #define SERVICES_COUNT	7
 #define CRLF "\r\n"
+
+#define PIN_HIH4030 A3
 
 WiFlyServer server(80);
 time_t prevDisplay = 0;
 time_t timeNow= 0;
 
 //my t5 dimmer pin and relay
+float humidity;
 
 int T5dim = 9;
 int T5relay = 8;
@@ -42,6 +51,11 @@ volatile boolean T5lightOn = false;
 //Should we dim true ?
 volatile boolean T5lightDim = false;
 String currenttime = "";
+//for digitalsmooth
+#define filterSamples   13
+float tempSmoothArray [filterSamples];   // array for holding raw sensor values for temp
+float humSmoothArray [filterSamples];   // array for holding raw sensor values for hum 
+
 
 volatile int brightness = 0;
 
@@ -50,6 +64,9 @@ unsigned long lastMillis = 0;
 // Create instance of the RestServer
 RestServer request_server = RestServer(Serial);
 
+
+AlarmID_t sunriseAlarmId;  
+AlarmID_t sunsetAlarmId;
 
 // input and output pin assignments
 
@@ -80,9 +97,9 @@ void MyIntterupt() {
 }
 
 void setup() {
-	
-        
-        //declare ping as outputs.      
+	//setup hum
+        HIH4030::setup(PIN_HIH4030);
+        //declare pin as outputs.      
         pinMode(T5dim, OUTPUT);
         pinMode(T5relay, OUTPUT);
         Serial.begin(9600);
@@ -98,12 +115,12 @@ void setup() {
        //   Serial.println(WiFly.ip());
         
         //sync time with NTP fron wifly
-       setSyncInterval(60);
+       setSyncInterval(86400);
        setSyncProvider(getNtpTime);
        //setTime((time_t)getNtpTime());
        //while(timeStatus()== timeNotSet){} 
-       Alarm.alarmRepeat(6,00,0, sunrise);
-       Alarm.alarmRepeat(10,00,0, sunset);
+       sunriseAlarmId = Alarm.alarmRepeat(6,00,0, sunrise);
+       sunsetAlarmId =  Alarm.alarmRepeat(10,00,0, sunset);
        //Alarm.alarmRepeat(21,40,0, syncNTP);
        Alarm.timerRepeat(60, Repeats);
 
@@ -126,10 +143,14 @@ void setup() {
 void loop() {
         
 //      delay(200);  
-        WiFlyClient client = server.available();
+
         timeNow = now();
-        Alarm.delay(1000);
+        Alarm.delay(200);
         dimT5();
+        humidity=HIH4030::read(PIN_HIH4030, 25);
+        
+        WiFlyClient client = server.available();
+        
 	// CONNECTED TO CLIENT
 	if (client) {
               Serial.println("In client.connect");
@@ -176,11 +197,12 @@ void loop() {
 
 
 
+
 //Not sure why we need this but it looks like it works
 unsigned long getNtpTime()
 {
   Serial.println("In syncNTP");
- return WiFly.getTime() + 7200; 
+ return CE.toLocal(WiFly.getTime()); 
  
 }
 
@@ -199,10 +221,6 @@ String printzeros(int digits){
   else 
   {  return (String)digits;}
 }
-  
-  
-
-
 
 void dimT5()
 {
@@ -227,6 +245,7 @@ void dimT5()
            if (!T5lightOn){
                if( brightness > 0 ){
                brightness--;
+               request_server.resource_set_state("dim", brightness);
                analogWrite(T5dim, brightness);
                if(brightness == 0){
                      //We are  on zero dim level turn off
@@ -243,14 +262,12 @@ void sunrise(){
   T5lightOn = true;
   T5lightDim = true;
   digitalWrite(T5relay, HIGH);
-  
   Serial.println("Alarm: - turn lights on");    
 }
+
 void sunset(){
   T5lightOn = false;
   T5lightDim = true;
-  
-  
   Serial.println("Alarm: - turn lights off");    
 }
 
@@ -264,3 +281,61 @@ void syncNTP(){
   Serial.println("after set snyncNTP");  
 }
 
+
+
+float digitalSmooth(float rawIn, float *sensSmoothArray){     // "int *sensSmoothArray" passes an array to the function - the asterisk indicates the array name is a pointer
+  int j, k, top, bottom; 
+  float temp;
+  float total;
+  static int i;
+ // static int raw[filterSamples];
+  static float sorted[filterSamples];
+  boolean done;
+
+  i = (i + 1) % filterSamples;    // increment counter and roll over if necc. -  % (modulo operator) rolls over variable
+  sensSmoothArray[i] = rawIn;                 // input new data into the oldest slot
+
+  // Serial.print("raw = ");
+
+  for (j=0; j<filterSamples; j++){     // transfer data array into anther array for sorting and averaging
+    sorted[j] = sensSmoothArray[j];
+  }
+
+  done = 0;                // flag to know when we're done sorting              
+  while(done != 1){        // simple swap sort, sorts numbers from lowest to highest
+    done = 1;
+    for (j = 0; j < (filterSamples - 1); j++){
+      if (sorted[j] > sorted[j + 1]){     // numbers are out of order - swap
+        temp = sorted[j + 1];
+        sorted [j+1] =  sorted[j] ;
+        sorted [j] = temp;
+        done = 0;
+      }
+    }
+  }
+
+/*
+  for (j = 0; j < (filterSamples); j++){    // print the array to debug
+    Serial.print(sorted[j]); 
+    Serial.print("   "); 
+  }
+  Serial.println();
+*/
+
+  // throw out top and bottom 15% of samples - limit to throw out at least one from top and bottom
+  bottom = max(((filterSamples * 15)  / 100), 1); 
+  top = min((((filterSamples * 85) / 100) + 1  ), (filterSamples - 1));   // the + 1 is to make up for asymmetry caused by integer rounding
+  k = 0;
+  total = 0;
+  for ( j = bottom; j< top; j++){
+    total += sorted[j];  // total remaining indices
+    k++; 
+    // Serial.print(sorted[j]); 
+    // Serial.print("   "); 
+  }
+
+//  Serial.println();
+//  Serial.print("average = ");
+//  Serial.println(total/k);
+  return total / k;    // divide by number of samples
+}
