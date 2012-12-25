@@ -22,7 +22,7 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
-#include <FlexiTimer2.h>
+
 #include <Time.h>
 #include <TimeAlarms.h>
 #include <Timezone.h>
@@ -32,7 +32,7 @@ TimeChangeRule CEST = {"CEST", Last, Sun, Mar, 2, 120};     //Central European S
 TimeChangeRule CET = {"CET ", Last, Sun, Oct, 3, 60};       //Central European Standard Time
 Timezone CE(CEST, CET);
 
-#define SERVICES_COUNT	5
+#define SERVICES_COUNT	7
 #define CRLF "\r\n"
 
 #define ONE_WIRE_BUS 7
@@ -78,7 +78,6 @@ AlarmID_t sunsetAlarmId;
 // input and output pin assignments
 
 
-
 // method that register the resource_descriptions with the request_server
 // it is important to define this array in its own method so that it will
 // be discarted from the Arduino's RAM after the registration.
@@ -86,20 +85,14 @@ void register_rest_server() {
       resource_description_t resource_description [SERVICES_COUNT] = {{"dim", 	true, 	{0, 255}}, 
 							  {"temp", 	false, 	{-10000, 10000}}, 
 							  {"hum", 	false, 	{0, 10000}}, 
+                                                          {"sunrise", 	true, 	{0, 1440}}, 
+							  {"sunset", 	true, 	{0, 1140}},
                                                           {"timer", 	true, 	{0, 1}},
                                                           {"light", 	true, 	{0, 1}} 
                                                             };
       request_server.register_resources(resource_description, SERVICES_COUNT);  
 }
 
-
-//put Innterupt code here
-void MyIntterupt() {
-  //update and check dim every second. 
-  dimT5();
-  Alarm.delay(0);
-  
-}
 
 void setup() {
         Serial.begin(9600);  
@@ -121,6 +114,8 @@ void setup() {
         pinMode(T5dim, OUTPUT);
         pinMode(T5relay, OUTPUT);
         
+
+        request_server.resource_set_state("light", 0);
         // start the Ethernet connection and the server:
         WiFly.begin();
         //lets wifly settle and set time. 
@@ -138,8 +133,7 @@ void setup() {
        sunriseAlarmId = Alarm.alarmRepeat(6,0,0, sunrise);
        sunsetAlarmId =  Alarm.alarmRepeat(10,0,0, sunset);
        //Alarm.alarmRepeat(21,40,0, syncNTP);
-      
-
+       
 
         Serial.println("Start");
         Serial.println(); 
@@ -310,17 +304,17 @@ void sunrise(){
   T5lightDim = true;
   digitalWrite(T5relay, HIGH);
   Serial.println("Alarm: - turn lights on");
-  
 }
 
 void sunset(){
   T5lightOn = false;
   T5lightDim = true;
   Serial.println("Alarm: - turn lights off");  
-  
 }
 
-
+void Repeats(){
+  Serial.println("second timer");         
+}
 
 void syncNTP(){
   Serial.println("In syncNTP");  
