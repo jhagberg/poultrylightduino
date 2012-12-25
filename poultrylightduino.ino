@@ -32,34 +32,41 @@ TimeChangeRule CEST = {"CEST", Last, Sun, Mar, 2, 120};     //Central European S
 TimeChangeRule CET = {"CET ", Last, Sun, Oct, 3, 60};       //Central European Standard Time
 Timezone CE(CEST, CET);
 
-#define SERVICES_COUNT	7
+#define SERVICES_COUNT	5
 #define CRLF "\r\n"
 
-#define PIN_HIH4030 A3
+#define ONE_WIRE_BUS 7
+#define PIN_HIH4030 A0
 
 WiFlyServer server(80);
 time_t prevDisplay = 0;
 time_t timeNow= 0;
 
-//my t5 dimmer pin and relay
-float humidity;
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature sensors(&oneWire);
 
+float humidity;
+float temp;
+float temp2;
+//my t5 dimmer pin and relay
 int T5dim = 9;
 int T5relay = 8;
+
+
 //Light on or off? 
-volatile boolean T5lightOn = false;
+boolean T5lightOn = false;
 //Should we dim true ?
-volatile boolean T5lightDim = false;
+boolean T5lightDim = false;
 String currenttime = "";
 //for digitalsmooth
 #define filterSamples   13
 float tempSmoothArray [filterSamples];   // array for holding raw sensor values for temp
 float humSmoothArray [filterSamples];   // array for holding raw sensor values for hum 
 
-
-volatile int brightness = 0;
+int brightness = 0;
 
 unsigned long lastMillis = 0;
+unsigned long lastMillis2 = 0;
 
 // Create instance of the RestServer
 RestServer request_server = RestServer(Serial);
@@ -77,11 +84,9 @@ AlarmID_t sunsetAlarmId;
 // be discarted from the Arduino's RAM after the registration.
 void register_rest_server() {
       resource_description_t resource_description [SERVICES_COUNT] = {{"dim", 	true, 	{0, 255}}, 
-							  {"temp", 	false, 	{-100, 100}}, 
-							  {"hum", 	false, 	{0, 100}}, 
-                                                          {"sunrise", 	true, 	{0, 1024}}, 
-							  {"sunset", 	true, 	{0, 1024}},
-                                                          {"time", 	true, 	{0, 1024}},
+							  {"temp", 	false, 	{-10000, 10000}}, 
+							  {"hum", 	false, 	{0, 10000}}, 
+                                                          {"timer", 	true, 	{0, 1}},
                                                           {"light", 	true, 	{0, 1}} 
                                                             };
       request_server.register_resources(resource_description, SERVICES_COUNT);  
@@ -97,14 +102,25 @@ void MyIntterupt() {
 }
 
 void setup() {
+        Serial.begin(9600);  
 	//setup hum
         HIH4030::setup(PIN_HIH4030);
+        sensors.begin();
+        sensors.setResolution(0, 10);
+        //Load temp smooth. 
+        int j;
+        for (j=0; j<filterSamples; j++){
+            sensors.requestTemperatures();
+            //Serial.println(sensors.getTempCByIndex(0));
+            temp2 = sensors.getTempCByIndex(0);
+            temp = digitalSmooth(temp2, tempSmoothArray); 
+            readHum(temp2);
+        }
+       
         //declare pin as outputs.      
         pinMode(T5dim, OUTPUT);
         pinMode(T5relay, OUTPUT);
-        Serial.begin(9600);
-
-        request_server.resource_set_state("light", 0);
+        
         // start the Ethernet connection and the server:
         WiFly.begin();
         //lets wifly settle and set time. 
@@ -119,10 +135,10 @@ void setup() {
        setSyncProvider(getNtpTime);
        //setTime((time_t)getNtpTime());
        //while(timeStatus()== timeNotSet){} 
-       sunriseAlarmId = Alarm.alarmRepeat(6,00,0, sunrise);
-       sunsetAlarmId =  Alarm.alarmRepeat(10,00,0, sunset);
+       sunriseAlarmId = Alarm.alarmRepeat(6,0,0, sunrise);
+       sunsetAlarmId =  Alarm.alarmRepeat(10,0,0, sunset);
        //Alarm.alarmRepeat(21,40,0, syncNTP);
-       Alarm.timerRepeat(60, Repeats);
+      
 
 
         Serial.println("Start");
@@ -130,6 +146,7 @@ void setup() {
         
         
         request_server.set_post_with_get(true);
+        request_server.set_json_lock(false);
 	server.begin();
 
 	
@@ -145,35 +162,26 @@ void loop() {
 //      delay(200);  
 
         timeNow = now();
-        Alarm.delay(200);
+        Alarm.delay(1);
+        //run dim function<
         dimT5();
-        humidity=HIH4030::read(PIN_HIH4030, 25);
+        //read temp
+        readTemp();
+        //read hum
+        readHum(temp);       
+        
+        
         
         WiFlyClient client = server.available();
-        
-	// CONNECTED TO CLIENT
+        // CONNECTED TO CLIENT
 	if (client) {
               Serial.println("In client.connect");
 		while (client.connected()) {
                         
 			// get request from client, if available
 			if (request_server.handle_requests(client)) {
-				
-				request_server.respond();	// tell RestServer: ready to respond
-                                
-                                if(request_server.resource_updated("light")){
-                                  T5lightOn = request_server.resource_get_state("light");
-                                   if(T5lightOn) {
-                                   T5lightDim = true;
-                                   digitalWrite(T5relay, HIGH);
-                                   }
-                                   if(!T5lightOn) {
-                                   T5lightDim = true;
-                                   }
-                                  }
-                                  
-                                  
-                                  
+				updateStuff();                               
+                                request_server.respond();	// tell RestServer: ready to respond          
 			}
                                                        
 			// send data to client, when ready	
@@ -195,6 +203,35 @@ void loop() {
 }
 
 
+void updateStuff()
+{
+//Update light  
+analogWrite(T5dim, request_server.resource_get_state("dim"));
+if(request_server.resource_get_state("relay"))
+{
+analogWrite(T5relay, HIGH);
+}
+if(request_server.resource_get_state("dim")>0)
+{
+digitalWrite(T5relay, HIGH);
+}
+if(request_server.resource_get_state("dim")==0)
+{
+digitalWrite(T5relay, LOW);
+}
+
+if(request_server.resource_updated("light")){
+                                  T5lightOn = request_server.resource_get_state("light");
+                                   if(T5lightOn) {
+                                   T5lightDim = true;
+                                   digitalWrite(T5relay, HIGH);
+                                   }
+                                   else  {
+                                   T5lightDim = true;
+                                   }
+                                  }
+
+}
 
 
 
@@ -230,8 +267,15 @@ void dimT5()
   if ( (millis() - lastMillis > 14000) && T5lightDim){
            
            lastMillis = millis();
-  //         Serial.println("in every 14s");
+           Serial.println("in every 14s");
+           Serial.print("T5lightDim: ");
+           Serial.println(T5lightDim);
+           Serial.print("T5lighOn: ");
+           Serial.println(T5lightOn);
+           Serial.print("Bright: ");
+           Serial.println(brightness);
            if (T5lightOn){ //Light is on and we are still dimming up
+             Serial.println("T5lightOn true");
              if( brightness < 255 ){
                   brightness++;
                   request_server.resource_set_state("dim", brightness);
@@ -242,9 +286,12 @@ void dimT5()
                   }
                   }
            }
-           if (!T5lightOn){
+           else  {
+               Serial.println("T5lightOn not true");
+               
                if( brightness > 0 ){
                brightness--;
+               request_server.resource_set_state("time", 12);
                request_server.resource_set_state("dim", brightness);
                analogWrite(T5dim, brightness);
                if(brightness == 0){
@@ -262,18 +309,18 @@ void sunrise(){
   T5lightOn = true;
   T5lightDim = true;
   digitalWrite(T5relay, HIGH);
-  Serial.println("Alarm: - turn lights on");    
+  Serial.println("Alarm: - turn lights on");
+  
 }
 
 void sunset(){
   T5lightOn = false;
   T5lightDim = true;
-  Serial.println("Alarm: - turn lights off");    
+  Serial.println("Alarm: - turn lights off");  
+  
 }
 
-void Repeats(){
-  Serial.println("second timer");         
-}
+
 
 void syncNTP(){
   Serial.println("In syncNTP");  
@@ -281,7 +328,27 @@ void syncNTP(){
   Serial.println("after set snyncNTP");  
 }
 
+void readTemp(){
+sensors.requestTemperatures();
 
+//Serial.println(sensors.getTempCByIndex(0));
+temp = digitalSmooth(sensors.getTempCByIndex(0), tempSmoothArray); 
+request_server.resource_set_state("temp", int(temp*100));
+
+}
+void readHum(float TEMP){
+   humidity=digitalSmooth(HIH4030::read(PIN_HIH4030, TEMP), humSmoothArray);
+   request_server.resource_set_state("hum", int(humidity*100));
+   int analogA; 
+   analogA = analogRead(0);
+   //Serial.println(humidity);
+   //Serial.print("libval: ");
+   //Serial.println(HIH4030::read(PIN_HIH4030, TEMP));
+   //Serial.print("newval: ");
+   //Serial.println(((((analogA/1023.)*5)-0.958)/0.0307)/(1.0546-0.00216*TEMP));
+   //Serial.print("analog: ");
+   //Serial.println(float (analogA/1023.) * 5);
+}
 
 float digitalSmooth(float rawIn, float *sensSmoothArray){     // "int *sensSmoothArray" passes an array to the function - the asterisk indicates the array name is a pointer
   int j, k, top, bottom; 
