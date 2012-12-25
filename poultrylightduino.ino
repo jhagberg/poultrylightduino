@@ -87,7 +87,7 @@ void register_rest_server() {
 							  {"hum", 	false, 	{0, 10000}}, 
                                                           {"sunrise", 	true, 	{0, 1440}}, 
 							  {"sunset", 	true, 	{0, 1140}},
-                                                          {"timer", 	true, 	{0, 1}},
+                                                          {"alarm", 	true, 	{0, 1}},
                                                           {"light", 	true, 	{0, 1}} 
                                                             };
       request_server.register_resources(resource_description, SERVICES_COUNT);  
@@ -147,8 +147,7 @@ void setup() {
 
 	// register resources with resource_server
 	register_rest_server();
-        //FlexiTimer2::set(1000, MyIntterupt); //Interrupt every second.
-        //FlexiTimer2::start();
+        
 }
 
 void loop() {
@@ -312,9 +311,6 @@ void sunset(){
   Serial.println("Alarm: - turn lights off");  
 }
 
-void Repeats(){
-  Serial.println("second timer");         
-}
 
 void syncNTP(){
   Serial.println("In syncNTP");  
