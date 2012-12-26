@@ -16,16 +16,26 @@
 #include <rest_server.h>
 #include <SPI.h>
 #include <WiFly.h>
+#include <avr/eeprom.h>
+
 //#include "Credentials.h"
 
 #include <HIH4030.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
+#include <OneButton.h>
 
 #include <Time.h>
 #include <TimeAlarms.h>
 #include <Timezone.h>
+
+struct settings_t
+{
+  int sunrise_min;
+  int sunset_min;
+} settings;
+
 
 //Central European Time (Frankfurt, Borlänge)
 TimeChangeRule CEST = {"CEST", Last, Sun, Mar, 2, 120};     //Central European Summer Time
@@ -109,13 +119,17 @@ void setup() {
             temp = digitalSmooth(temp2, tempSmoothArray); 
             readHum(temp2);
         }
-       
+        //read from settings sunrise and sunset time in minute. 
+        eeprom_read_block((void*)&settings, (void*)0, sizeof(settings));
         //declare pin as outputs.      
         pinMode(T5dim, OUTPUT);
         pinMode(T5relay, OUTPUT);
         
 
         request_server.resource_set_state("light", 0);
+        request_server.resource_set_state("alarm", 1);
+        request_server.resource_set_state("sunset", settings.sunset_min);
+        request_server.resource_set_state("sunrise", settings.sunrise_min);
         // start the Ethernet connection and the server:
         WiFly.begin();
         //lets wifly settle and set time. 
@@ -129,14 +143,15 @@ void setup() {
        setSyncInterval(86400);
        setSyncProvider(getNtpTime);
        //setTime((time_t)getNtpTime());
-       //while(timeStatus()== timeNotSet){} 
-       sunriseAlarmId = Alarm.alarmRepeat(6,0,0, sunrise);
-       sunsetAlarmId =  Alarm.alarmRepeat(10,0,0, sunset);
+       //while(timeStatus()== timeNotSet){}
+
+       sunriseAlarmId = Alarm.alarmRepeat((settings.sunrise_min/60),(settings.sunrise_min % 60),0, sunrise);
+       sunsetAlarmId =  Alarm.alarmRepeat((settings.sunset_min/60),(settings.sunset_min % 60),0, sunset);
        //Alarm.alarmRepeat(21,40,0, syncNTP);
        
 
-        Serial.println("Start");
-        Serial.println(); 
+//        Serial.println("Start");
+//        Serial.println(); 
         
         
         request_server.set_post_with_get(true);
@@ -168,7 +183,7 @@ void loop() {
         WiFlyClient client = server.available();
         // CONNECTED TO CLIENT
 	if (client) {
-              Serial.println("In client.connect");
+           //   Serial.println("In client.connect");
 		while (client.connected()) {
                         
 			// get request from client, if available
@@ -189,9 +204,9 @@ void loop() {
                          
 		}
 		// give the web browser time to receive the data and close connection
-//delay(200);
+                Alarm.delay(5);
 		client.stop();
-                Serial.println("after client stop");
+         //       Serial.println("after client stop");
 	}
 }
 
@@ -200,10 +215,7 @@ void updateStuff()
 {
 //Update light  
 analogWrite(T5dim, request_server.resource_get_state("dim"));
-if(request_server.resource_get_state("relay"))
-{
-analogWrite(T5relay, HIGH);
-}
+
 if(request_server.resource_get_state("dim")>0)
 {
 digitalWrite(T5relay, HIGH);
@@ -212,6 +224,18 @@ if(request_server.resource_get_state("dim")==0)
 {
 digitalWrite(T5relay, LOW);
 }
+
+if(request_server.resource_updated("sunrise")){
+ settings.sunrise_min = request_server.resource_get_state("sunrise");
+ eeprom_write_block((const void*)&settings, (void*)0, sizeof(settings));
+}
+
+if(request_server.resource_updated("sunset")){
+ settings.sunrise_min = request_server.resource_get_state("sunset");
+ eeprom_write_block((const void*)&settings, (void*)0, sizeof(settings));
+}
+
+
 
 if(request_server.resource_updated("light")){
                                   T5lightOn = request_server.resource_get_state("light");
@@ -223,7 +247,6 @@ if(request_server.resource_updated("light")){
                                    T5lightDim = true;
                                    }
                                   }
-
 }
 
 
@@ -231,19 +254,11 @@ if(request_server.resource_updated("light")){
 //Not sure why we need this but it looks like it works
 unsigned long getNtpTime()
 {
-  Serial.println("In syncNTP");
+  //Serial.println("In syncNTP");
  return CE.toLocal(WiFly.getTime()); 
  
 }
 
-
-void printDigits(int digits){
-  // utility function for digital clock display: prints preceding colon and leading 0
-  Serial.print(":");
-  if(digits < 10)
-    Serial.print('0');
-  Serial.print(digits);
-}
 
 String printzeros(int digits){
   if(digits < 10)
@@ -260,6 +275,7 @@ void dimT5()
   if ( (millis() - lastMillis > 14000) && T5lightDim){
            
            lastMillis = millis();
+  /*    
            Serial.println("in every 14s");
            Serial.print("T5lightDim: ");
            Serial.println(T5lightDim);
@@ -267,8 +283,11 @@ void dimT5()
            Serial.println(T5lightOn);
            Serial.print("Bright: ");
            Serial.println(brightness);
+    */  
            if (T5lightOn){ //Light is on and we are still dimming up
-             Serial.println("T5lightOn true");
+      
+     //        Serial.println("T5lightOn true");
+      
              if( brightness < 255 ){
                   brightness++;
                   request_server.resource_set_state("dim", brightness);
@@ -280,7 +299,8 @@ void dimT5()
                   }
            }
            else  {
-               Serial.println("T5lightOn not true");
+      
+       //      Serial.println("T5lightOn not true");
                
                if( brightness > 0 ){
                brightness--;
@@ -302,20 +322,21 @@ void sunrise(){
   T5lightOn = true;
   T5lightDim = true;
   digitalWrite(T5relay, HIGH);
-  Serial.println("Alarm: - turn lights on");
+  
+  //Serial.println("Alarm: - turn lights on");
 }
 
 void sunset(){
   T5lightOn = false;
   T5lightDim = true;
-  Serial.println("Alarm: - turn lights off");  
+  //Serial.println("Alarm: - turn lights off");  
 }
 
 
 void syncNTP(){
-  Serial.println("In syncNTP");  
+  //Serial.println("In syncNTP");  
   setTime((time_t)getNtpTime());
-  Serial.println("after set snyncNTP");  
+  //Serial.println("after set snyncNTP");  
 }
 
 void readTemp(){
