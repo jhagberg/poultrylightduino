@@ -32,8 +32,8 @@
 
 struct settings_t
 {
-  int sunrise_min;
-  int sunset_min;
+  time_t sunrise_min;
+  time_t sunset_min;
 } settings;
 
 
@@ -47,6 +47,8 @@ Timezone CE(CEST, CET);
 
 #define ONE_WIRE_BUS 7
 #define PIN_HIH4030 A0
+
+OneButton button(A1, true);
 
 WiFlyServer server(80);
 time_t prevDisplay = 0;
@@ -62,11 +64,14 @@ float temp2;
 int T5dim = 9;
 int T5relay = 8;
 
+//int for button press dim loop
+int bpress = 1;
 
 //Light on or off? 
 boolean T5lightOn = false;
 //Should we dim true ?
 boolean T5lightDim = false;
+boolean ButtonDim = false;
 String currenttime = "";
 //for digitalsmooth
 #define filterSamples   13
@@ -121,15 +126,14 @@ void setup() {
         }
         //read from settings sunrise and sunset time in minute. 
         eeprom_read_block((void*)&settings, (void*)0, sizeof(settings));
+        Serial.println(settings.sunrise_min);
+        Serial.println(settings.sunset_min);
         //declare pin as outputs.      
         pinMode(T5dim, OUTPUT);
         pinMode(T5relay, OUTPUT);
         
 
-        request_server.resource_set_state("light", 0);
-        request_server.resource_set_state("alarm", 1);
-        request_server.resource_set_state("sunset", settings.sunset_min);
-        request_server.resource_set_state("sunrise", settings.sunrise_min);
+        
         // start the Ethernet connection and the server:
         WiFly.begin();
         //lets wifly settle and set time. 
@@ -145,8 +149,9 @@ void setup() {
        //setTime((time_t)getNtpTime());
        //while(timeStatus()== timeNotSet){}
 
-       sunriseAlarmId = Alarm.alarmRepeat((settings.sunrise_min/60),(settings.sunrise_min % 60),0, sunrise);
-       sunsetAlarmId =  Alarm.alarmRepeat((settings.sunset_min/60),(settings.sunset_min % 60),0, sunset);
+       sunriseAlarmId = Alarm.alarmRepeat((settings.sunrise_min*60), sunrise);
+       sunsetAlarmId =  Alarm.alarmRepeat((settings.sunset_min*60), sunset);
+      Serial.println(Alarm.read(sunriseAlarmId));
        //Alarm.alarmRepeat(21,40,0, syncNTP);
        
 
@@ -163,21 +168,44 @@ void setup() {
 	// register resources with resource_server
 	register_rest_server();
         
+        request_server.resource_set_state("light", 0);
+        request_server.resource_set_state("alarm", 1);
+        request_server.resource_set_state("sunset", settings.sunset_min);
+        request_server.resource_set_state("sunrise", settings.sunrise_min);
+        button.attachClick(singleclick);
+        button.attachDoubleClick(doubleclick);
+        button.attachPress(buttonpress);
+        button.setClickTicks(600);
+        
 }
 
 void loop() {
         
 //      delay(200);  
-
+      //  Serial.println("loop");
+      //  Serial.println(now());
         timeNow = now();
+        button.tick();
+        Serial.println(digitalRead(A1));
+        if( (digitalRead(A1) == 0 ) && ButtonDim)
+          {
+          dimFast();
+          }
+         else{
+           ButtonDim =false;
+         }
         Alarm.delay(1);
-        //run dim function<
+        button.tick();
+               //run dim function<
         dimT5();
+        button.tick();
         //read temp
         readTemp();
+        button.tick();
         //read hum
-        readHum(temp);       
-        
+        readHum(temp);
+        button.tick();       
+             
         
         
         WiFlyClient client = server.available();
@@ -190,6 +218,7 @@ void loop() {
 			if (request_server.handle_requests(client)) {
 				updateStuff();                               
                                 request_server.respond();	// tell RestServer: ready to respond          
+                                button.tick();
 			}
                                                        
 			// send data to client, when ready	
@@ -204,10 +233,67 @@ void loop() {
                          
 		}
 		// give the web browser time to receive the data and close connection
+                button.tick();
                 Alarm.delay(5);
+                button.tick();
 		client.stop();
-         //       Serial.println("after client stop");
+                Serial.println("after client stop");
 	}
+}
+
+void doubleclick() {
+  
+if(request_server.resource_get_state("dim")>0)
+  {
+    Serial.println("doubleclick sunset");
+  sunset();
+  }
+else
+  {
+    Serial.println("doubleclick sunrise");
+   sunrise();
+  }
+  
+} // doubleclick
+
+void singleclick() {
+if(request_server.resource_get_state("dim")==0)
+  {
+    Serial.println("click ON");
+  analogWrite(T5dim,1);
+  request_server.resource_set_state("dim",1);
+  digitalWrite(T5relay, HIGH);
+  T5lightOn = true;
+  }
+else
+  {
+    Serial.println("Click Off");
+  analogWrite(T5dim,0);
+  request_server.resource_set_state("dim",0);
+  digitalWrite(T5relay, LOW);
+  T5lightOn = false;
+  }
+
+
+} 
+
+void buttonpress() {
+  
+  ButtonDim = true;
+  Serial.println("In press");
+  dimFast();
+  
+} 
+
+
+void dimFast() {
+  
+request_server.resource_set_state("dim",request_server.resource_get_state("dim")+bpress);
+analogWrite(T5dim,request_server.resource_get_state("dim") );
+Serial.println(request_server.resource_get_state("dim")); 
+if (request_server.resource_get_state("dim") == 255) bpress = -1;             // switch direction at peak
+if (request_server.resource_get_state("dim") == 1) bpress = 1;             // switch direction at peak
+  
 }
 
 
@@ -225,18 +311,24 @@ if(request_server.resource_get_state("dim")==0)
 digitalWrite(T5relay, LOW);
 }
 
-if(request_server.resource_updated("sunrise")){
+if(request_server.resource_get_state("sunrise") != settings.sunrise_min){
  settings.sunrise_min = request_server.resource_get_state("sunrise");
  eeprom_write_block((const void*)&settings, (void*)0, sizeof(settings));
+ Alarm.write(sunriseAlarmId, time_t(settings.sunrise_min*60));
+ Serial.println("in sunrise update");
+ Serial.println(Alarm.read(sunriseAlarmId));
+
 }
 
-if(request_server.resource_updated("sunset")){
- settings.sunrise_min = request_server.resource_get_state("sunset");
+if(request_server.resource_get_state("sunset") != settings.sunset_min){
+ settings.sunset_min = request_server.resource_get_state("sunset");
  eeprom_write_block((const void*)&settings, (void*)0, sizeof(settings));
+ Alarm.write(sunsetAlarmId, time_t(settings.sunset_min*60));
+ Serial.println(Alarm.read(sunsetAlarmId));
 }
 
 
-
+/*
 if(request_server.resource_updated("light")){
                                   T5lightOn = request_server.resource_get_state("light");
                                    if(T5lightOn) {
@@ -247,6 +339,7 @@ if(request_server.resource_updated("light")){
                                    T5lightDim = true;
                                    }
                                   }
+*/
 }
 
 
@@ -304,7 +397,6 @@ void dimT5()
                
                if( brightness > 0 ){
                brightness--;
-               request_server.resource_set_state("time", 12);
                request_server.resource_set_state("dim", brightness);
                analogWrite(T5dim, brightness);
                if(brightness == 0){
@@ -323,7 +415,7 @@ void sunrise(){
   T5lightDim = true;
   digitalWrite(T5relay, HIGH);
   
-  //Serial.println("Alarm: - turn lights on");
+  Serial.println("Alarm: - turn lights on");
 }
 
 void sunset(){
