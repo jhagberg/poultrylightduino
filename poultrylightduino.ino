@@ -437,54 +437,30 @@ void dimT5()
   //update dim bright every 14 second this will take aprox 60 min
   //Serial.println("in t5dim");
   //Serial.println(T5lightDim);
-  if ( (millis() - lastMillis > 14000) && T5lightDim){
-
+  if ( (millis() - lastMillis > 14000) && T5lightDim)
+    {
     lastMillis = millis();
+    if (T5lightOn)
+        { //Light is on and we are still dimming up
+        bpress = 1;
+        if(request_server.resource_get_state("dim") == 255) T5lightDim = false;
+        }
+        
+    else  
+      {
+      if(request_server.resource_get_state("dim") > 0 )
+        {
+        bpress = -1;             
+        if(request_server.resource_get_state("dim") == 0)
+            {
+            digitalWrite(T5relay, LOW);
+            T5lightDim = false;
+            }
+        }
+      }  
     
     request_server.resource_set_state("dim",request_server.resource_get_state("dim")+bpress);
     analogWrite(T5dim,request_server.resource_get_state("dim") );
-      //Serial.println(request_server.resource_get_state("dim")); 
-    if (request_server.resource_get_state("dim") == 255) bpress = -1;             // switch direction at peak
-    if (request_server.resource_get_state("dim") == 1) bpress = 1;             // switch direction at peak
-    /*    
-     Serial.println("in every 14s");
-     Serial.print("T5lightDim: ");
-     Serial.println(T5lightDim);
-     Serial.print("T5lighOn: ");
-     Serial.println(T5lightOn);
-     Serial.print("Bright: ");
-     Serial.println(brightness);
-     */
-    if (T5lightOn){ //Light is on and we are still dimming up
-         bpress = 1;
-         
-      //        Serial.println("T5lightOn true");
-
-      if( brightness < 255 ){
-        brightness++;
-        request_server.resource_set_state("dim", brightness);
-        analogWrite(T5dim, brightness);
-        if(brightness == 255){
-          //we are done dimming
-          T5lightDim = false;
-        }
-      }
-    }
-    else  {
-
-      //      Serial.println("T5lightOn not true");
-
-      if( brightness > 0 ){
-        brightness--;
-        request_server.resource_set_state("dim", brightness);
-        analogWrite(T5dim, brightness);
-        if(brightness == 0){
-          //We are  on zero dim level turn off
-          digitalWrite(T5relay, LOW);
-          T5lightDim = false;
-        }
-      }
-    }  
   }  
 
 }
