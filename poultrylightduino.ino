@@ -1,15 +1,15 @@
 /**********************************************************************
-  A poultry light dimmer based on WiFly and Julio Terras Arduino Rest Server
- 
-
-
- For more information check out the GitHub repository at: 
-	https://github.com/julioterra/Arduino_Rest_Server/wiki
- 
- Sketch and library created by Julio Terra - November 20, 2011
-	http://www.julioterra.com/journal
-
-
+ * A poultry light dimmer based on WiFly and Julio Terras Arduino Rest Server
+ * 
+ * 
+ * 
+ * For more information check out the GitHub repository at: 
+ * 	https://github.com/julioterra/Arduino_Rest_Server/wiki
+ * 
+ * Sketch and library created by Julio Terra - November 20, 2011
+ * 	http://www.julioterra.com/journal
+ * 
+ * 
  **********************************************************************/
 
 #include <config_rest.h>
@@ -18,13 +18,15 @@
 #include <WiFly.h>
 #include <avr/eeprom.h>
 
+#include <FlexiTimer2.h>
+#include "OneButton.h"
+
 //#include "Credentials.h"
 
 #include <HIH4030.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
-#include <OneButton.h>
 
 #include <Time.h>
 #include <TimeAlarms.h>
@@ -34,12 +36,15 @@ struct settings_t
 {
   time_t sunrise_min;
   time_t sunset_min;
-} settings;
+} 
+settings;
 
 
 //Central European Time (Frankfurt, Borlänge)
-TimeChangeRule CEST = {"CEST", Last, Sun, Mar, 2, 120};     //Central European Summer Time
-TimeChangeRule CET = {"CET ", Last, Sun, Oct, 3, 60};       //Central European Standard Time
+TimeChangeRule CEST = {
+  "CEST", Last, Sun, Mar, 2, 120};     //Central European Summer Time
+TimeChangeRule CET = {
+  "CET ", Last, Sun, Oct, 3, 60};       //Central European Standard Time
 Timezone CE(CEST, CET);
 
 #define SERVICES_COUNT	7
@@ -48,7 +53,7 @@ Timezone CE(CEST, CET);
 #define ONE_WIRE_BUS 7
 #define PIN_HIH4030 A0
 
-OneButton button(A1, true);
+
 
 WiFlyServer server(80);
 time_t prevDisplay = 0;
@@ -65,13 +70,16 @@ int T5dim = 9;
 int T5relay = 8;
 
 //int for button press dim loop
-int bpress = 1;
+volatile int bpress = 1;
+OneButton button(A1, true);
+
 
 //Light on or off? 
-boolean T5lightOn = false;
+volatile boolean T5lightOn = false;
+boolean firstreq = true;
 //Should we dim true ?
-boolean T5lightDim = false;
-boolean ButtonDim = false;
+volatile boolean T5lightDim = false;
+volatile boolean ButtonDim = false;
 String currenttime = "";
 //for digitalsmooth
 #define filterSamples   13
@@ -97,249 +105,309 @@ AlarmID_t sunsetAlarmId;
 // it is important to define this array in its own method so that it will
 // be discarted from the Arduino's RAM after the registration.
 void register_rest_server() {
-      resource_description_t resource_description [SERVICES_COUNT] = {{"dim", 	true, 	{0, 255}}, 
-							  {"temp", 	false, 	{-10000, 10000}}, 
-							  {"hum", 	false, 	{0, 10000}}, 
-                                                          {"sunrise", 	true, 	{0, 1440}}, 
-							  {"sunset", 	true, 	{0, 1140}},
-                                                          {"alarm", 	true, 	{0, 1}},
-                                                          {"light", 	true, 	{0, 1}} 
-                                                            };
-      request_server.register_resources(resource_description, SERVICES_COUNT);  
+  resource_description_t resource_description [SERVICES_COUNT] = {
+    {
+      "dim", 	true, 	{
+        0, 255      }
+    }
+    , 
+    {
+      "temp", 	false, 	{
+        -10000, 10000      }
+    }
+    , 
+    {
+      "hum", 	false, 	{
+        0, 10000      }
+    }
+    , 
+    {
+      "sunrise", 	true, 	{
+        0, 1440      }
+    }
+    , 
+    {
+      "sunset", 	true, 	{
+        0, 1140      }
+    }
+    ,
+    {
+      "alarm", 	true, 	{
+        0, 1      }
+    }
+    ,
+    {
+      "light", 	true, 	{
+        0, 1      }
+    } 
+  };
+  request_server.register_resources(resource_description, SERVICES_COUNT);  
 }
 
 
 void setup() {
-        Serial.begin(9600);  
-	//setup hum
-        HIH4030::setup(PIN_HIH4030);
-        sensors.begin();
-        sensors.setResolution(0, 10);
-        //Load temp smooth. 
-        int j;
-        for (j=0; j<filterSamples; j++){
-            sensors.requestTemperatures();
-            //Serial.println(sensors.getTempCByIndex(0));
-            temp2 = sensors.getTempCByIndex(0);
-            temp = digitalSmooth(temp2, tempSmoothArray); 
-            readHum(temp2);
-        }
-        //read from settings sunrise and sunset time in minute. 
-        eeprom_read_block((void*)&settings, (void*)0, sizeof(settings));
-        Serial.println(settings.sunrise_min);
-        Serial.println(settings.sunset_min);
-        //declare pin as outputs.      
-        pinMode(T5dim, OUTPUT);
-        pinMode(T5relay, OUTPUT);
-        
+  
+  Serial.begin(9600);  
+  //setup hum
+  HIH4030::setup(PIN_HIH4030);
+  sensors.begin();
+  sensors.setResolution(0, 10);
+  //Load temp smooth. 
+  
+  for (int j=0; j<filterSamples; j++){
+    sensors.requestTemperatures();
+    //Serial.println(sensors.getTempCByIndex(0));
+    temp2 = sensors.getTempCByIndex(0);
+    temp = digitalSmooth(temp2, tempSmoothArray); 
+    readHum(temp2);
+  }
+  //read from settings sunrise and sunset time in minute. 
+  eeprom_read_block((void*)&settings, (void*)0, sizeof(settings));
+  Serial.println(settings.sunrise_min);
+  Serial.println(settings.sunset_min);
+  //declare pin as outputs.      
+  pinMode(T5dim, OUTPUT);
+  pinMode(T5relay, OUTPUT);
 
-        
-        // start the Ethernet connection and the server:
-        WiFly.begin();
-        //lets wifly settle and set time. 
-        delay(1000);
-        
-            
-       //   Serial.print("IP: ");
-       //   Serial.println(WiFly.ip());
-        
-        //sync time with NTP fron wifly
-       setSyncInterval(86400);
-       setSyncProvider(getNtpTime);
-       //setTime((time_t)getNtpTime());
-       //while(timeStatus()== timeNotSet){}
 
-       sunriseAlarmId = Alarm.alarmRepeat((settings.sunrise_min*60), sunrise);
-       sunsetAlarmId =  Alarm.alarmRepeat((settings.sunset_min*60), sunset);
-      Serial.println(Alarm.read(sunriseAlarmId));
-       //Alarm.alarmRepeat(21,40,0, syncNTP);
-       
 
-//        Serial.println("Start");
-//        Serial.println(); 
-        
-        
-        request_server.set_post_with_get(true);
-        request_server.set_json_lock(false);
-	server.begin();
+  // start the Ethernet connection and the server:
+  WiFly.begin();
+  //lets wifly settle and set time. 
+//  delay(1000);
 
-	
 
-	// register resources with resource_server
-	register_rest_server();
-        
-        request_server.resource_set_state("light", 0);
-        request_server.resource_set_state("alarm", 1);
-        request_server.resource_set_state("sunset", settings.sunset_min);
-        request_server.resource_set_state("sunrise", settings.sunrise_min);
-        button.attachClick(singleclick);
-        button.attachDoubleClick(doubleclick);
-        button.attachPress(buttonpress);
-        button.setClickTicks(600);
-        
+  //   Serial.print("IP: ");
+  //   Serial.println(WiFly.ip());
+
+  //sync time with NTP fron wifly
+  setSyncInterval(86400);
+  setSyncProvider(getNtpTime);
+  //setTime((time_t)getNtpTime());
+  //while(timeStatus()== timeNotSet){}
+
+  sunriseAlarmId = Alarm.alarmRepeat((settings.sunrise_min*60), sunrise);
+  sunsetAlarmId =  Alarm.alarmRepeat((settings.sunset_min*60), sunset);
+  //Serial.println(Alarm.read(sunriseAlarmId));
+  //Alarm.alarmRepeat(21,40,0, syncNTP);
+
+
+  //        Serial.println("Start");
+  //        Serial.println(); 
+
+
+  request_server.set_post_with_get(true);
+  request_server.set_json_lock(false);
+  server.begin();
+
+
+
+  // register resources with resource_server
+  register_rest_server();
+
+  request_server.resource_set_state("light", 0);
+  request_server.resource_set_state("alarm", 1);
+  request_server.resource_set_state("sunset", settings.sunset_min);
+  request_server.resource_set_state("sunrise", settings.sunrise_min);
+
+  button.attachDoubleClick(doubleclick);
+  button.attachClick(singleclick);
+  button.attachPress(buttonpress);
+  
+  FlexiTimer2::set(1,1/1000, myInterupt); //Interrupt every milisec
+  FlexiTimer2::start();
+  
+  
+
 }
 
 void loop() {
-        
-//      delay(200);  
-      //  Serial.println("loop");
-      //  Serial.println(now());
-        timeNow = now();
-        button.tick();
-        Serial.println(digitalRead(A1));
-        if( (digitalRead(A1) == 0 ) && ButtonDim)
+
+  
+  Alarm.delay(1);
+  //run dim function<
+  dimT5();
+  //read temp
+  readTemp();
+  //read hum
+  readHum(temp);
+
+
+  WiFlyClient client = server.available();
+  // CONNECTED TO CLIENT
+  if (client) {
+
+    while (client.connected()) {
+
+      // get request from client, if available
+      if (request_server.handle_requests(client)) {
+          //all states is always updated first time requested 
+          if(firstreq)
           {
-          dimFast();
+            firstreq =false;
           }
-         else{
-           ButtonDim =false;
-         }
-        Alarm.delay(1);
-        button.tick();
-               //run dim function<
-        dimT5();
-        button.tick();
-        //read temp
-        readTemp();
-        button.tick();
-        //read hum
-        readHum(temp);
-        button.tick();       
-             
+          else
+          {
+          updateStuff();                               
+          }
+        request_server.respond();	// tell RestServer: ready to respond          
         
-        
-        WiFlyClient client = server.available();
-        // CONNECTED TO CLIENT
-	if (client) {
-           //   Serial.println("In client.connect");
-		while (client.connected()) {
-                        
-			// get request from client, if available
-			if (request_server.handle_requests(client)) {
-				updateStuff();                               
-                                request_server.respond();	// tell RestServer: ready to respond          
-                                button.tick();
-			}
-                                                       
-			// send data to client, when ready	
-			if (request_server.handle_response(client))
-                              {
-                                 currenttime = currenttime + hour() + ":" + printzeros(minute()) + ":" + printzeros(second()) +" " + year() + "-" + month() + "-" + day();
-                                  client.print(currenttime);
-                                  currenttime = "";
-                                  request_server.print_flash_string(PSTR("\r\n\r\n\r\n"), client);
-                                  break;                                      
-                              }
-                         
-		}
-		// give the web browser time to receive the data and close connection
-                button.tick();
-                Alarm.delay(5);
-                button.tick();
-		client.stop();
-                Serial.println("after client stop");
-	}
+      }
+
+      // send data to client, when ready	
+      if (request_server.handle_response(client))
+      {
+        currenttime = currenttime + hour() + ":" + printzeros(minute()) + ":" + printzeros(second()) +" " + year() + "-" + month() + "-" + day();
+        client.print(currenttime);
+        currenttime = "";
+        request_server.print_flash_string(PSTR("\r\n\r\n\r\n"), client);
+        break;                                      
+      }
+
+    }
+    // give the web browser time to receive the data and close connection
+
+    Alarm.delay(10);
+
+    
+    client.stop();
+    Serial.println("after client stop");
+  }
+}
+
+void myInterupt() {
+  button.tick();
+  if( (digitalRead(A1) == 0 ) && ButtonDim)
+  {
+    dimFast();
+  }
+  else{
+    ButtonDim =false;
+  }
+  
 }
 
 void doubleclick() {
-  
-if(request_server.resource_get_state("dim")>0)
+
+  if(request_server.resource_get_state("dim")>0)
   {
-    Serial.println("doubleclick sunset");
-  sunset();
+    //Serial.println("doubleclick sunset");
+    sunset();
   }
-else
+  else
   {
-    Serial.println("doubleclick sunrise");
-   sunrise();
+    //Serial.println("doubleclick sunrise");
+    sunrise();
+    analogWrite(T5dim,1);
+    request_server.resource_set_state("dim",1);
   }
-  
+
 } // doubleclick
 
 void singleclick() {
-if(request_server.resource_get_state("dim")==0)
+  if(request_server.resource_get_state("dim")==0)
   {
-    Serial.println("click ON");
-  analogWrite(T5dim,1);
-  request_server.resource_set_state("dim",1);
-  digitalWrite(T5relay, HIGH);
-  T5lightOn = true;
+    //Serial.println("click ON");
+    analogWrite(T5dim,1);
+    request_server.resource_set_state("dim",1);
+    digitalWrite(T5relay, HIGH);
+    T5lightOn = true;
   }
-else
+  else
   {
-    Serial.println("Click Off");
-  analogWrite(T5dim,0);
-  request_server.resource_set_state("dim",0);
-  digitalWrite(T5relay, LOW);
-  T5lightOn = false;
+    //serial.println("Click Off");
+    analogWrite(T5dim,0);
+    request_server.resource_set_state("dim",0);
+    digitalWrite(T5relay, LOW);
+    T5lightOn = false;
+    T5lightDim = false;
   }
 
 
 } 
 
 void buttonpress() {
-  
+
   ButtonDim = true;
-  Serial.println("In press");
+  //serialprintln("In press");
   dimFast();
-  
+
 } 
 
 
 void dimFast() {
-  
-request_server.resource_set_state("dim",request_server.resource_get_state("dim")+bpress);
-analogWrite(T5dim,request_server.resource_get_state("dim") );
-Serial.println(request_server.resource_get_state("dim")); 
-if (request_server.resource_get_state("dim") == 255) bpress = -1;             // switch direction at peak
-if (request_server.resource_get_state("dim") == 1) bpress = 1;             // switch direction at peak
-  
+
+  if ( (millis() - lastMillis2 > 50) ){
+
+    lastMillis2 = millis();
+  request_server.resource_set_state("dim",request_server.resource_get_state("dim")+bpress);
+  analogWrite(T5dim,request_server.resource_get_state("dim") );
+  //Serial.println(request_server.resource_get_state("dim")); 
+  if (request_server.resource_get_state("dim") == 255) bpress = -1;             // switch direction at peak
+  if (request_server.resource_get_state("dim") == 1) bpress = 1;             // switch direction at peak
+  }
 }
 
 
 void updateStuff()
 {
-//Update light  
-analogWrite(T5dim, request_server.resource_get_state("dim"));
+   if(request_server.resource_updated("alarm"))
+    {
+     if(request_server.resource_get_state("alarm") == 0){
+    Alarm.disable(sunriseAlarmId);
+    Alarm.disable(sunsetAlarmId);
+     }
+     else {
+    Alarm.enable(sunriseAlarmId);
+    Alarm.enable(sunsetAlarmId);
+       
+     }
+    }
+  
+  //Update light  
+  if(request_server.resource_updated("dim"))
+    {
+    analogWrite(T5dim, request_server.resource_get_state("dim"));
+    }
+    
+  if(request_server.resource_updated("dim") && request_server.resource_get_state("dim")>0)
+  {
+    digitalWrite(T5relay, HIGH);
+  }
+  if(request_server.resource_updated("dim") && request_server.resource_get_state("dim")==0)
+  {
+    digitalWrite(T5relay, LOW);
+  }
 
-if(request_server.resource_get_state("dim")>0)
-{
-digitalWrite(T5relay, HIGH);
-}
-if(request_server.resource_get_state("dim")==0)
-{
-digitalWrite(T5relay, LOW);
-}
+  if(request_server.resource_get_state("sunrise") != settings.sunrise_min){
+    settings.sunrise_min = request_server.resource_get_state("sunrise");
+    eeprom_write_block((const void*)&settings, (void*)0, sizeof(settings));
+    Alarm.write(sunriseAlarmId, time_t(settings.sunrise_min*60));
+    //Serial.println("in sunrise update");
+    //Serial.println(Alarm.read(sunriseAlarmId));
 
-if(request_server.resource_get_state("sunrise") != settings.sunrise_min){
- settings.sunrise_min = request_server.resource_get_state("sunrise");
- eeprom_write_block((const void*)&settings, (void*)0, sizeof(settings));
- Alarm.write(sunriseAlarmId, time_t(settings.sunrise_min*60));
- Serial.println("in sunrise update");
- Serial.println(Alarm.read(sunriseAlarmId));
+  }
 
-}
-
-if(request_server.resource_get_state("sunset") != settings.sunset_min){
- settings.sunset_min = request_server.resource_get_state("sunset");
- eeprom_write_block((const void*)&settings, (void*)0, sizeof(settings));
- Alarm.write(sunsetAlarmId, time_t(settings.sunset_min*60));
- Serial.println(Alarm.read(sunsetAlarmId));
-}
+  if(request_server.resource_get_state("sunset") != settings.sunset_min){
+    settings.sunset_min = request_server.resource_get_state("sunset");
+    eeprom_write_block((const void*)&settings, (void*)0, sizeof(settings));
+    Alarm.write(sunsetAlarmId, time_t(settings.sunset_min*60));
+    //Serial.println(Alarm.read(sunsetAlarmId));
+  }
 
 
-/*
+  /*
 if(request_server.resource_updated("light")){
-                                  T5lightOn = request_server.resource_get_state("light");
-                                   if(T5lightOn) {
-                                   T5lightDim = true;
-                                   digitalWrite(T5relay, HIGH);
-                                   }
-                                   else  {
-                                   T5lightDim = true;
-                                   }
-                                  }
-*/
+   T5lightOn = request_server.resource_get_state("light");
+   if(T5lightOn) {
+   T5lightDim = true;
+   digitalWrite(T5relay, HIGH);
+   }
+   else  {
+   T5lightDim = true;
+   }
+   }
+   */
 }
 
 
@@ -348,74 +416,85 @@ if(request_server.resource_updated("light")){
 unsigned long getNtpTime()
 {
   //Serial.println("In syncNTP");
- return CE.toLocal(WiFly.getTime()); 
- 
+  return CE.toLocal(WiFly.getTime()); 
+
 }
 
 
 String printzeros(int digits){
   if(digits < 10)
-   {return (String)"0" + digits;}
+  {
+    return (String)"0" + digits;
+  }
   else 
-  {  return (String)digits;}
+  {  
+    return (String)digits;
+  }
 }
 
 void dimT5()
 {
   //update dim bright every 14 second this will take aprox 60 min
-//Serial.println("in t5dim");
-//Serial.println(T5lightDim);
+  //Serial.println("in t5dim");
+  //Serial.println(T5lightDim);
   if ( (millis() - lastMillis > 14000) && T5lightDim){
-           
-           lastMillis = millis();
-  /*    
-           Serial.println("in every 14s");
-           Serial.print("T5lightDim: ");
-           Serial.println(T5lightDim);
-           Serial.print("T5lighOn: ");
-           Serial.println(T5lightOn);
-           Serial.print("Bright: ");
-           Serial.println(brightness);
-    */  
-           if (T5lightOn){ //Light is on and we are still dimming up
-      
-     //        Serial.println("T5lightOn true");
-      
-             if( brightness < 255 ){
-                  brightness++;
-                  request_server.resource_set_state("dim", brightness);
-                  analogWrite(T5dim, brightness);
-                  if(brightness == 255){
-                    //we are done dimming
-                    T5lightDim = false;
-                  }
-                  }
-           }
-           else  {
-      
-       //      Serial.println("T5lightOn not true");
-               
-               if( brightness > 0 ){
-               brightness--;
-               request_server.resource_set_state("dim", brightness);
-               analogWrite(T5dim, brightness);
-               if(brightness == 0){
-                     //We are  on zero dim level turn off
-                     digitalWrite(T5relay, LOW);
-                     T5lightDim = false;
-               }
-           }
-        }  
+
+    lastMillis = millis();
+    
+    request_server.resource_set_state("dim",request_server.resource_get_state("dim")+bpress);
+    analogWrite(T5dim,request_server.resource_get_state("dim") );
+      //Serial.println(request_server.resource_get_state("dim")); 
+    if (request_server.resource_get_state("dim") == 255) bpress = -1;             // switch direction at peak
+    if (request_server.resource_get_state("dim") == 1) bpress = 1;             // switch direction at peak
+    /*    
+     Serial.println("in every 14s");
+     Serial.print("T5lightDim: ");
+     Serial.println(T5lightDim);
+     Serial.print("T5lighOn: ");
+     Serial.println(T5lightOn);
+     Serial.print("Bright: ");
+     Serial.println(brightness);
+     */
+    if (T5lightOn){ //Light is on and we are still dimming up
+         bpress = 1;
+         
+      //        Serial.println("T5lightOn true");
+
+      if( brightness < 255 ){
+        brightness++;
+        request_server.resource_set_state("dim", brightness);
+        analogWrite(T5dim, brightness);
+        if(brightness == 255){
+          //we are done dimming
+          T5lightDim = false;
+        }
+      }
+    }
+    else  {
+
+      //      Serial.println("T5lightOn not true");
+
+      if( brightness > 0 ){
+        brightness--;
+        request_server.resource_set_state("dim", brightness);
+        analogWrite(T5dim, brightness);
+        if(brightness == 0){
+          //We are  on zero dim level turn off
+          digitalWrite(T5relay, LOW);
+          T5lightDim = false;
+        }
+      }
     }  
-  
+  }  
+
 }
 
 void sunrise(){
   T5lightOn = true;
   T5lightDim = true;
   digitalWrite(T5relay, HIGH);
-  
-  Serial.println("Alarm: - turn lights on");
+
+  //Serial.println("Alarm: - turn lights on");
 }
 
 void sunset(){
@@ -432,25 +511,27 @@ void syncNTP(){
 }
 
 void readTemp(){
-sensors.requestTemperatures();
+  sensors.requestTemperatures();
 
-//Serial.println(sensors.getTempCByIndex(0));
-temp = digitalSmooth(sensors.getTempCByIndex(0), tempSmoothArray); 
-request_server.resource_set_state("temp", int(temp*100));
+  //Serial.println(sensors.getTempCByIndex(0));
+  temp = digitalSmooth(sensors.getTempCByIndex(0), tempSmoothArray); 
+  request_server.resource_set_state("temp", int(temp*100));
 
 }
 void readHum(float TEMP){
-   humidity=digitalSmooth(HIH4030::read(PIN_HIH4030, TEMP), humSmoothArray);
-   request_server.resource_set_state("hum", int(humidity*100));
-   int analogA; 
-   analogA = analogRead(0);
-   //Serial.println(humidity);
-   //Serial.print("libval: ");
-   //Serial.println(HIH4030::read(PIN_HIH4030, TEMP));
-   //Serial.print("newval: ");
-   //Serial.println(((((analogA/1023.)*5)-0.958)/0.0307)/(1.0546-0.00216*TEMP));
-   //Serial.print("analog: ");
-   //Serial.println(float (analogA/1023.) * 5);
+  humidity=digitalSmooth(HIH4030::read(PIN_HIH4030, TEMP), humSmoothArray);
+  request_server.resource_set_state("hum", int(humidity*100));
+  int analogA; 
+  analogA = analogRead(0);
+  /*
+  Serial.println(humidity);
+  Serial.print("libval: ");
+  Serial.println(HIH4030::read(PIN_HIH4030, TEMP));
+  Serial.print("newval: ");
+  Serial.println(((((analogA/1023.)*5)-0.958)/0.0307)/(1.0546-0.00216*TEMP));
+  Serial.print("analog: ");
+  Serial.println(float (analogA/1023.) * 5);
+  */
 }
 
 float digitalSmooth(float rawIn, float *sensSmoothArray){     // "int *sensSmoothArray" passes an array to the function - the asterisk indicates the array name is a pointer
@@ -458,7 +539,7 @@ float digitalSmooth(float rawIn, float *sensSmoothArray){     // "int *sensSmoot
   float temp;
   float total;
   static int i;
- // static int raw[filterSamples];
+  // static int raw[filterSamples];
   static float sorted[filterSamples];
   boolean done;
 
@@ -484,13 +565,13 @@ float digitalSmooth(float rawIn, float *sensSmoothArray){     // "int *sensSmoot
     }
   }
 
-/*
+  /*
   for (j = 0; j < (filterSamples); j++){    // print the array to debug
-    Serial.print(sorted[j]); 
-    Serial.print("   "); 
-  }
-  Serial.println();
-*/
+   Serial.print(sorted[j]); 
+   Serial.print("   "); 
+   }
+   Serial.println();
+   */
 
   // throw out top and bottom 15% of samples - limit to throw out at least one from top and bottom
   bottom = max(((filterSamples * 15)  / 100), 1); 
@@ -504,8 +585,9 @@ float digitalSmooth(float rawIn, float *sensSmoothArray){     // "int *sensSmoot
     // Serial.print("   "); 
   }
 
-//  Serial.println();
-//  Serial.print("average = ");
-//  Serial.println(total/k);
+  //  Serial.println();
+  //  Serial.print("average = ");
+  //  Serial.println(total/k);
   return total / k;    // divide by number of samples
 }
+
