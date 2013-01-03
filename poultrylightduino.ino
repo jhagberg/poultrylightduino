@@ -176,63 +176,53 @@ void setup() {
   //lets wifly settle and set time. 
 //  delay(1000);
 
-
-  //   Serial.print("IP: ");
-  //   Serial.println(WiFly.ip());
-
   //sync time with NTP fron wifly
   setSyncInterval(86400);
   setSyncProvider(getNtpTime);
-  //setTime((time_t)getNtpTime());
-  //while(timeStatus()== timeNotSet){}
-
+  
+  //Set Alarms sunrise and sunset
   sunriseAlarmId = Alarm.alarmRepeat((settings.sunrise_min*60), sunrise);
   sunsetAlarmId =  Alarm.alarmRepeat((settings.sunset_min*60), sunset);
-  //Serial.println(Alarm.read(sunriseAlarmId));
-  //Alarm.alarmRepeat(21,40,0, syncNTP);
 
-
-  //        Serial.println("Start");
-  //        Serial.println(); 
-
-
+  //REST Settings
   request_server.set_post_with_get(true);
   request_server.set_json_lock(false);
   server.begin();
 
-
-
   // register resources with resource_server
   register_rest_server();
 
+  //Set start values
   request_server.resource_set_state("light", 0);
   request_server.resource_set_state("alarm", 1);
   request_server.resource_set_state("sunset", settings.sunset_min);
   request_server.resource_set_state("sunrise", settings.sunrise_min);
 
+  //Onebutton lib functions
+  
   button.attachDoubleClick(doubleclick);
   button.attachClick(singleclick);
   button.attachPress(buttonpress);
   
-  FlexiTimer2::set(1,1/1000, myInterupt); //Interrupt every milisec
+  //timer interupt to check if button is pressed
+  FlexiTimer2::set(1,1/1000, myInterupt); //Interrupt every 1/1000 milisec
   FlexiTimer2::start();
-  
-  
+   
 
 }
 
 void loop() {
 
-  
+  //check for Alarms 
   Alarm.delay(1);
-  //run dim function<
+  //run dim function
   dimT5();
   //read temp
   readTemp();
   //read hum
   readHum(temp);
 
-
+//Da WiFly shit or magic
   WiFlyClient client = server.available();
   // CONNECTED TO CLIENT
   if (client) {
@@ -241,7 +231,7 @@ void loop() {
 
       // get request from client, if available
       if (request_server.handle_requests(client)) {
-          //all states is always updated first time requested 
+          //all states is always updated first time requested after power cycle
           if(firstreq)
           {
             firstreq =false;
@@ -257,6 +247,7 @@ void loop() {
       // send data to client, when ready	
       if (request_server.handle_response(client))
       {
+        //Send current time extra garbage on the page. 
         currenttime = currenttime + hour() + ":" + printzeros(minute()) + ":" + printzeros(second()) +" " + year() + "-" + month() + "-" + day();
         client.print(currenttime);
         currenttime = "";
@@ -271,7 +262,7 @@ void loop() {
 
     
     client.stop();
-    Serial.println("after client stop");
+    //Serial.println("after client stop");
   }
 }
 
@@ -435,8 +426,6 @@ String printzeros(int digits){
 void dimT5()
 {
   //update dim bright every 14 second this will take aprox 60 min
-  //Serial.println("in t5dim");
-  //Serial.println(T5lightDim);
   if ( (millis() - lastMillis > 14000) && T5lightDim)
     {
     lastMillis = millis();
