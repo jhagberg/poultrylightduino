@@ -174,7 +174,7 @@ void setup() {
   // start the Ethernet connection and the server:
   WiFly.begin();
   //lets wifly settle and set time. 
-//  delay(1000);
+  delay(1000);
 
   //sync time with NTP fron wifly
   setSyncInterval(86400);
