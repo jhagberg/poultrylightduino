@@ -47,13 +47,11 @@ TimeChangeRule CET = {
   "CET ", Last, Sun, Oct, 3, 60};       //Central European Standard Time
 Timezone CE(CEST, CET);
 
-#define SERVICES_COUNT	7
+#define SERVICES_COUNT	6
 #define CRLF "\r\n"
 
 #define ONE_WIRE_BUS 7
 #define PIN_HIH4030 A0
-
-
 
 WiFlyServer server(80);
 time_t prevDisplay = 0;
@@ -73,7 +71,6 @@ int T5relay = 8;
 volatile int bpress = 1;
 OneButton button(A1, true);
 
-
 //Light on or off? 
 volatile boolean T5lightOn = false;
 boolean firstreq = true;
@@ -86,14 +83,11 @@ String currenttime = "";
 float tempSmoothArray [filterSamples];   // array for holding raw sensor values for temp
 float humSmoothArray [filterSamples];   // array for holding raw sensor values for hum 
 
-int brightness = 0;
-
 unsigned long lastMillis = 0;
 unsigned long lastMillis2 = 0;
 
 // Create instance of the RestServer
 RestServer request_server = RestServer(Serial);
-
 
 AlarmID_t sunriseAlarmId;  
 AlarmID_t sunsetAlarmId;
@@ -133,11 +127,6 @@ void register_rest_server() {
     ,
     {
       "alarm", 	true, 	{
-        0, 1      }
-    }
-    ,
-    {
-      "light", 	true, 	{
         0, 1      }
     } 
   };
@@ -193,7 +182,6 @@ void setup() {
   register_rest_server();
 
   //Set start values
-  request_server.resource_set_state("light", 0);
   request_server.resource_set_state("alarm", 1);
   request_server.resource_set_state("sunset", settings.sunset_min);
   request_server.resource_set_state("sunrise", settings.sunrise_min);
