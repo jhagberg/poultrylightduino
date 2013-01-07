@@ -440,12 +440,13 @@ void dimT5()
       if(request_server.resource_get_state("dim") > 0 )
         {
         bpress = -1;             
-        if(request_server.resource_get_state("dim") == 0)
-            {
-            digitalWrite(T5relay, LOW);
-            T5lightDim = false;
-            }
         }
+       if(request_server.resource_get_state("dim") == 0)
+         {
+         digitalWrite(T5relay, LOW);
+         T5lightDim = false;
+         }
+        
       }  
     
     request_server.resource_set_state("dim",request_server.resource_get_state("dim")+bpress);
