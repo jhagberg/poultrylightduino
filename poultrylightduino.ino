@@ -122,7 +122,7 @@ void register_rest_server() {
     , 
     {
       "sunset", 	true, 	{
-        0, 1140      }
+        0, 1440      }
     }
     ,
     {
@@ -137,19 +137,38 @@ void register_rest_server() {
 void setup() {
   
   Serial.begin(9600);  
+  Serial.println("PING");
+    
+  //REST Settings
+  request_server.set_post_with_get(true);
+  request_server.set_json_lock(false);
+  server.begin();
+
+  // register resources with resource_server
+  register_rest_server();
+
+  //Set start values
+  request_server.resource_set_state("alarm", 1);
+  request_server.resource_set_state("sunset", settings.sunset_min);
+  request_server.resource_set_state("sunrise", settings.sunrise_min);
+
   //setup hum
   HIH4030::setup(PIN_HIH4030);
   sensors.begin();
   sensors.setResolution(0, 10);
 
+Serial.println(filterSamples);
   //Load temp smooth. 
   for (int j=0; j<filterSamples; j++){
     sensors.requestTemperatures();
-    //Serial.println(sensors.getTempCByIndex(0));
+
     temp2 = sensors.getTempCByIndex(0);
+    Serial.println(temp2);
+    Serial.println(j);
     temp = digitalSmooth(temp2, tempSmoothArray); 
     readHum(temp2);
   }
+  
   //read from settings sunrise and sunset time in minute. 
   eeprom_read_block((void*)&settings, (void*)0, sizeof(settings));
   Serial.println(settings.sunrise_min);
@@ -173,18 +192,6 @@ void setup() {
   sunriseAlarmId = Alarm.alarmRepeat((settings.sunrise_min*60), sunrise);
   sunsetAlarmId =  Alarm.alarmRepeat((settings.sunset_min*60), sunset);
 
-  //REST Settings
-  request_server.set_post_with_get(true);
-  request_server.set_json_lock(false);
-  server.begin();
-
-  // register resources with resource_server
-  register_rest_server();
-
-  //Set start values
-  request_server.resource_set_state("alarm", 1);
-  request_server.resource_set_state("sunset", settings.sunset_min);
-  request_server.resource_set_state("sunrise", settings.sunrise_min);
 
   //Onebutton lib functions
   
