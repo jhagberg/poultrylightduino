@@ -136,8 +136,8 @@ void register_rest_server() {
 
 void setup() {
   
-  Serial.begin(9600);  
-  Serial.println("PING");
+  //Serial.begin(9600);  
+  //Serial.println("PING");
     
   //REST Settings
   request_server.set_post_with_get(true);
@@ -163,8 +163,8 @@ Serial.println(filterSamples);
     sensors.requestTemperatures();
 
     temp2 = sensors.getTempCByIndex(0);
-    Serial.println(temp2);
-    Serial.println(j);
+    //Serial.println(temp2);
+    //Serial.println(j);
     temp = digitalSmooth(temp2, tempSmoothArray); 
     readHum(temp2);
   }
