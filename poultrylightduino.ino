@@ -141,8 +141,8 @@ void setup() {
   HIH4030::setup(PIN_HIH4030);
   sensors.begin();
   sensors.setResolution(0, 10);
+
   //Load temp smooth. 
-  
   for (int j=0; j<filterSamples; j++){
     sensors.requestTemperatures();
     //Serial.println(sensors.getTempCByIndex(0));
@@ -268,7 +268,7 @@ void myInterupt() {
 
 void doubleclick() {
 
-  if(request_server.resource_get_state("dim")>0)
+  if(request_server.resource_get_state(0)>0)
   {
     //Serial.println("doubleclick sunset");
     sunset();
@@ -278,17 +278,17 @@ void doubleclick() {
     //Serial.println("doubleclick sunrise");
     sunrise();
     analogWrite(T5dim,1);
-    request_server.resource_set_state("dim",1);
+    request_server.resource_set_state(0,1);
   }
 
 } // doubleclick
 
 void singleclick() {
-  if(request_server.resource_get_state("dim")==0)
+  if(request_server.resource_get_state(0)==0)
   {
     //Serial.println("click ON");
     analogWrite(T5dim,1);
-    request_server.resource_set_state("dim",1);
+    request_server.resource_set_state(0,1);
     digitalWrite(T5relay, HIGH);
     T5lightOn = true;
   }
@@ -296,7 +296,7 @@ void singleclick() {
   {
     //serial.println("Click Off");
     analogWrite(T5dim,0);
-    request_server.resource_set_state("dim",0);
+    request_server.resource_set_state(0,0);
     digitalWrite(T5relay, LOW);
     T5lightOn = false;
     T5lightDim = false;
@@ -319,11 +319,11 @@ void dimFast() {
   if ( (millis() - lastMillis2 > 50) ){
 
     lastMillis2 = millis();
-  request_server.resource_set_state("dim",request_server.resource_get_state("dim")+bpress);
-  analogWrite(T5dim,request_server.resource_get_state("dim") );
+  request_server.resource_set_state(0,request_server.resource_get_state(0)+bpress);
+  analogWrite(T5dim,request_server.resource_get_state(0) );
   //Serial.println(request_server.resource_get_state("dim")); 
-  if (request_server.resource_get_state("dim") == 255) bpress = -1;             // switch direction at peak
-  if (request_server.resource_get_state("dim") == 1) bpress = 1;             // switch direction at peak
+  if (request_server.resource_get_state(0) == 255) bpress = -1;             // switch direction at peak
+  if (request_server.resource_get_state(0) == 1) bpress = 1;             // switch direction at peak
   }
 }
 
@@ -344,16 +344,16 @@ void updateStuff()
     }
   
   //Update light  
-  if(request_server.resource_updated("dim"))
+  if(request_server.resource_updated(0))
     {
-    analogWrite(T5dim, request_server.resource_get_state("dim"));
+    analogWrite(T5dim, request_server.resource_get_state(0));
     }
     
-  if(request_server.resource_updated("dim") && request_server.resource_get_state("dim")>0)
+  if(request_server.resource_updated(0) && request_server.resource_get_state(0)>0)
   {
     digitalWrite(T5relay, HIGH);
   }
-  if(request_server.resource_updated("dim") && request_server.resource_get_state("dim")==0)
+  if(request_server.resource_updated(0) && request_server.resource_get_state(0)==0)
   {
     digitalWrite(T5relay, LOW);
   }
@@ -420,16 +420,16 @@ void dimT5()
     if (T5lightOn)
         { //Light is on and we are still dimming up
         bpress = 1;
-        if(request_server.resource_get_state("dim") == 255) T5lightDim = false;
+        if(request_server.resource_get_state(0) == 255) T5lightDim = false;
         }
         
     else  
       {
-      if(request_server.resource_get_state("dim") > 0 )
+      if(request_server.resource_get_state(0) > 0 )
         {
         bpress = -1;             
         }
-       if(request_server.resource_get_state("dim") == 0)
+       if(request_server.resource_get_state(0) == 0)
          {
          digitalWrite(T5relay, LOW);
          T5lightDim = false;
@@ -437,8 +437,8 @@ void dimT5()
         
       }  
     
-    request_server.resource_set_state("dim",request_server.resource_get_state("dim")+bpress);
-    analogWrite(T5dim,request_server.resource_get_state("dim") );
+    request_server.resource_set_state(0,request_server.resource_get_state(0)+bpress);
+    analogWrite(T5dim,request_server.resource_get_state(0) );
   }  
 
 }
@@ -469,12 +469,12 @@ void readTemp(){
 
   //Serial.println(sensors.getTempCByIndex(0));
   temp = digitalSmooth(sensors.getTempCByIndex(0), tempSmoothArray); 
-  request_server.resource_set_state("temp", int(temp*100));
+  request_server.resource_set_state(1, int(temp*100));
 
 }
 void readHum(float TEMP){
   humidity=digitalSmooth(HIH4030::read(PIN_HIH4030, TEMP), humSmoothArray);
-  request_server.resource_set_state("hum", int(humidity*100));
+  request_server.resource_set_state(2, int(humidity*100));
   int analogA; 
   analogA = analogRead(0);
   /*
