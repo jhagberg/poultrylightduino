@@ -139,6 +139,11 @@ void setup() {
   //Serial.begin(9600);  
   //Serial.println("PING");
     
+  //read from settings sunrise and sunset time in minute. BEFORE SETTING IN SERVER
+  eeprom_read_block((void*)&settings, (void*)0, sizeof(settings));
+  //Serial.println(settings.sunrise_min);
+  //Serial.println(settings.sunset_min);
+  
   //REST Settings
   request_server.set_post_with_get(true);
   request_server.set_json_lock(false);
@@ -157,7 +162,7 @@ void setup() {
   sensors.begin();
   sensors.setResolution(0, 10);
 
-Serial.println(filterSamples);
+
   //Load temp smooth. 
   for (int j=0; j<filterSamples; j++){
     sensors.requestTemperatures();
@@ -169,10 +174,8 @@ Serial.println(filterSamples);
     readHum(temp2);
   }
   
-  //read from settings sunrise and sunset time in minute. 
-  eeprom_read_block((void*)&settings, (void*)0, sizeof(settings));
-  Serial.println(settings.sunrise_min);
-  Serial.println(settings.sunset_min);
+ 
+
   //declare pin as outputs.      
   pinMode(T5dim, OUTPUT);
   pinMode(T5relay, OUTPUT);
