@@ -136,18 +136,26 @@ void register_rest_server() {
 
 void setup() {
   
-  //Serial.begin(9600);  
-  //Serial.println("PING");
+  Serial.begin(9600);  
+  Serial.println("PING");
+ 
+ // start the Ethernet connection and the server:
+  WiFly.begin();
+  //lets wifly settle and set time. 
+  delay(1000);
+
+  server.begin();
     
   //read from settings sunrise and sunset time in minute. BEFORE SETTING IN SERVER
   eeprom_read_block((void*)&settings, (void*)0, sizeof(settings));
-  //Serial.println(settings.sunrise_min);
-  //Serial.println(settings.sunset_min);
+  Serial.println(settings.sunrise_min);
+  Serial.println(settings.sunset_min);
   
   //REST Settings
   request_server.set_post_with_get(true);
   request_server.set_json_lock(false);
-  server.begin();
+  
+  
 
   // register resources with resource_server
   register_rest_server();
@@ -182,10 +190,6 @@ void setup() {
 
 
 
-  // start the Ethernet connection and the server:
-  WiFly.begin();
-  //lets wifly settle and set time. 
-  delay(1000);
 
   //sync time with NTP fron wifly
   setSyncInterval(86400);
@@ -201,6 +205,8 @@ void setup() {
   button.attachDoubleClick(doubleclick);
   button.attachClick(singleclick);
   button.attachPress(buttonpress);
+  
+  
   
   //timer interupt to check if button is pressed
   FlexiTimer2::set(1,1/1000, myInterupt); //Interrupt every 1/1000 milisec
@@ -224,7 +230,7 @@ void loop() {
   WiFlyClient client = server.available();
   // CONNECTED TO CLIENT
   if (client) {
-
+Serial.println("after client con");
     while (client.connected()) {
 
       // get request from client, if available
@@ -260,7 +266,7 @@ void loop() {
 
     
     client.stop();
-    //Serial.println("after client stop");
+    Serial.println("after client stop");
   }
 }
 
