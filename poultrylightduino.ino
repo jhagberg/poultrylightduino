@@ -69,6 +69,7 @@ int T5relay = 8;
 
 //int for button press dim loop
 volatile int bpress = 1;
+volatile int bpress2 = 1;
 OneButton button(A1, true);
 
 //Light on or off? 
@@ -324,6 +325,7 @@ void singleclick() {
 void buttonpress() {
 
   ButtonDim = true;
+  
   //serialprintln("In press");
   dimFast();
 
@@ -335,11 +337,11 @@ void dimFast() {
   if ( (millis() - lastMillis2 > 50) ){
 
     lastMillis2 = millis();
-  request_server.resource_set_state(0,request_server.resource_get_state(0)+bpress);
+  request_server.resource_set_state(0,request_server.resource_get_state(0)+bpress2);
   analogWrite(T5dim,request_server.resource_get_state(0) );
   //Serial.println(request_server.resource_get_state("dim")); 
-  if (request_server.resource_get_state(0) == 255) bpress = -1;             // switch direction at peak
-  if (request_server.resource_get_state(0) == 1) bpress = 1;             // switch direction at peak
+  if (request_server.resource_get_state(0) == 255) bpress2 = -1;             // switch direction at peak
+  if (request_server.resource_get_state(0) == 1) bpress2 = 1;             // switch direction at peak
   }
 }
 
