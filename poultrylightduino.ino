@@ -27,7 +27,6 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
-
 #include <Time.h>
 #include <TimeAlarms.h>
 #include <Timezone.h>
@@ -38,7 +37,6 @@ struct settings_t
   time_t sunset_min;
 } 
 settings;
-
 
 //Central European Time (Frankfurt, Borlänge)
 TimeChangeRule CEST = {
@@ -94,7 +92,6 @@ AlarmID_t sunriseAlarmId;
 AlarmID_t sunsetAlarmId;
 
 // input and output pin assignments
-
 
 // method that register the resource_descriptions with the request_server
 // it is important to define this array in its own method so that it will
