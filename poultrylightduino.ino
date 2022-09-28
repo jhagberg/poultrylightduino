@@ -38,7 +38,6 @@ struct settings_t
 } 
 settings;
 
-
 //Central European Time (Frankfurt, Borlänge)
 TimeChangeRule CEST = {
   "CEST", Last, Sun, Mar, 2, 120};     //Central European Summer Time
@@ -93,7 +92,6 @@ AlarmID_t sunriseAlarmId;
 AlarmID_t sunsetAlarmId;
 
 // input and output pin assignments
-
 
 // method that register the resource_descriptions with the request_server
 // it is important to define this array in its own method so that it will
