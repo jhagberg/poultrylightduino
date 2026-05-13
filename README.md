@@ -18,5 +18,5 @@ Hardware
  * A push button switch
  * Connection cabels
  * 12V powersource to the Arduino. 
- * 
+ * 2
  
